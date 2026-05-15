@@ -5,9 +5,12 @@ import GameBoard from './components/GameBoard.vue';
 
 const PLAYER_NAME_STORAGE_KEY = 'bomber-bots-player-name';
 const ROOM_NAME_STORAGE_KEY = 'bomber-bots-room-name';
+const ROBOT_SKIN_STORAGE_KEY = 'bomber-bots-robot-skin';
+const DEFAULT_ROBOT_SKIN = '#6a7a8a';
 
 const playerName = ref('');
 const roomName = ref('');
+const robotSkinColor = ref(DEFAULT_ROBOT_SKIN);
 const inGame = ref(false);
 const error = ref('');
 
@@ -46,13 +49,22 @@ function getDefaultScreenName() {
   return name.length <= 32 ? name : name.slice(0, 32);
 }
 
+function isValidSkinHex(s) {
+  return typeof s === 'string' && /^#[0-9A-Fa-f]{6}$/.test(s.trim());
+}
+
 onMounted(() => {
   try {
-    const savedName = localStorage.getItem(PLAYER_NAME_STORAGE_KEY);
-    if (savedName && savedName.length <= 32) {
-      playerName.value = savedName;
+    const rawName = localStorage.getItem(PLAYER_NAME_STORAGE_KEY);
+    const trimmedName = rawName != null ? String(rawName).trim() : '';
+    if (trimmedName.length > 0) {
+      playerName.value = trimmedName.length <= 32 ? trimmedName : trimmedName.slice(0, 32);
     } else {
       playerName.value = getDefaultScreenName();
+    }
+    const savedSkin = localStorage.getItem(ROBOT_SKIN_STORAGE_KEY);
+    if (isValidSkinHex(savedSkin)) {
+      robotSkinColor.value = savedSkin.trim().toLowerCase();
     }
     const savedRoom = localStorage.getItem(ROOM_NAME_STORAGE_KEY);
     if (savedRoom && savedRoom.length <= 48) {
@@ -88,6 +100,7 @@ function joinGame() {
   try {
     localStorage.setItem(PLAYER_NAME_STORAGE_KEY, name);
     localStorage.setItem(ROOM_NAME_STORAGE_KEY, room);
+    localStorage.setItem(ROBOT_SKIN_STORAGE_KEY, robotSkinColor.value);
   } catch {
     /* ignore */
   }
@@ -106,14 +119,24 @@ function joinGame() {
         <form class="lobby-form" @submit.prevent="joinGame">
           <label class="field">
             <span class="label">Your name</span>
-            <input
-              v-model="playerName"
-              type="text"
-              name="player-name"
-              autocomplete="nickname"
-              maxlength="32"
-              placeholder="Rusty"
-          />
+            <div class="name-with-skin">
+              <input
+                v-model="playerName"
+                type="text"
+                name="player-name"
+                class="name-input"
+                autocomplete="nickname"
+                maxlength="32"
+                placeholder="Rusty"
+              />
+              <input
+                v-model="robotSkinColor"
+                type="color"
+                name="robot-skin"
+                class="skin-input"
+                title="Pick your robot’s body colour"
+              />
+            </div>
           </label>
           <label class="field">
             <span class="label">Room name</span>
@@ -135,6 +158,7 @@ function joinGame() {
       v-else
       :player-name="playerName"
       :room-name="roomName"
+      :robot-skin-color="robotSkinColor"
     />
   </div>
 </template>
@@ -199,23 +223,58 @@ function joinGame() {
   opacity: 0.85;
 }
 
-.field input {
+.field input[type='text'] {
+  width: 100%;
   padding: 0.55rem 0.65rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(0, 0, 0, 0.25);
   color: #f0f4f8;
   font-size: 1rem;
+  box-sizing: border-box;
 }
 
-.field input::placeholder {
+.field input[type='text']::placeholder {
   color: rgba(255, 255, 255, 0.35);
 }
 
-.field input:focus {
+.field input[type='text']:focus {
   outline: 2px solid #5a9fd4;
   outline-offset: 1px;
   border-color: rgba(90, 159, 212, 0.5);
+}
+
+.name-with-skin {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.name-with-skin .name-input {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+}
+
+.name-with-skin .skin-input {
+  flex: 0 0 2.75rem;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  box-sizing: border-box;
+  padding: 0.2rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  align-self: stretch;
+  min-height: 2.45rem;
+}
+
+.name-with-skin .skin-input:focus-visible {
+  outline: 2px solid #5a9fd4;
+  outline-offset: 1px;
 }
 
 .error {

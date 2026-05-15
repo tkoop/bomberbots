@@ -1,0 +1,14 @@
+{
+  "name": "bomber-bots-server",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Bomber Bots — Socket.IO game server",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1"
+  }
+}
