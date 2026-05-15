@@ -1,0 +1,39 @@
+---
+description: Use plain JavaScript only; never introduce TypeScript
+alwaysApply: true
+---
+
+# JavaScript only (no TypeScript)
+
+This project is **plain JavaScript**. Do not introduce TypeScript.
+
+## Do not
+
+- Add or use **`.ts`**, **`.tsx`**, **`.mts`**, or **`.cts`** source files.
+- Add **`.d.ts`** declaration files (use **`jsconfig.json`** + Vite’s client types for editor hints instead).
+- Use **`<script lang="ts">`** or **`lang="tsx"`** in Vue SFCs; use **`<script setup>`** or **`<script>`** with default JS only.
+- Add **`tsconfig.json`** or the **`typescript`** npm package unless an upstream tool *requires* it and there is no JS alternative.
+
+## Do
+
+- Write **`.js`** modules and **`.vue`** files with JavaScript `<script>` blocks.
+- Use **JSDoc** (`@param`, `@returns`, `@type`, etc.) when extra type clarity helps readers or tooling.
+
+## Examples
+
+```vue
+<!-- Bad -->
+<script setup lang="ts">
+const x: number = 1;
+</script>
+
+<!-- Good -->
+<script setup>
+const x = 1;
+</script>
+```
+
+```text
+Bad:  src/game.ts, src/types.d.ts, tsconfig.json
+Good: src/game.js, jsconfig.json (noEmit, allowJs, for editor only)
+```

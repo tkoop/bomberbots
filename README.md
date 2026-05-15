@@ -1,6 +1,6 @@
 # Bomber Bots
 
-Bomber Bots is a small **3D browser prototype** built with [Three.js](https://threejs.org/). You move a simple block-style robot around a square **game board** with perimeter walls. The idea is to grow this into a networked game later; for now it is a local movement demo.
+Bomber Bots is a small **3D browser prototype** built with [Vue 3](https://vuejs.org/) and [Three.js](https://threejs.org/). You move a simple block-style robot around a square **game board** with perimeter walls. The first screen asks for your **name** and a **room name**; after you click **Play**, the 3D game loads (no URL routing). Your **player name** and **room name** are saved in `localStorage` and filled in the next time you open the lobby. If nothing is saved yet, the room defaults to the weekday and time of day (e.g. `tuesday-afternoon`), and the name defaults to the **surname** word from a random [`docker-names`](https://www.npmjs.com/package/docker-names) pair, in **title case** without digits (e.g. `Bohr`). The plan is to use those fields for multiplayer later; for now they are only stored on the client.
 
 **Controls:** arrow keys move the robot on the board (the page prevents default scrolling on those keys).
 
@@ -13,14 +13,14 @@ Bomber Bots is a small **3D browser prototype** built with [Three.js](https://th
 From the project directory:
 
 ```bash
-npm ci
+npm install
 ```
 
 ## How to run
 
 ### Development (recommended)
 
-Starts the Vite dev server with hot reload and resolves dependencies (including `three`) for you:
+Starts the Vite dev server with hot reload. Vue single-file components and `three` are compiled and bundled for you:
 
 ```bash
 npm run dev
@@ -44,17 +44,18 @@ npm run preview
 
 Then open the URL shown (often `http://localhost:4173/`). You can also serve `dist` with any static file server, with the **server root** set to the `dist` folder so asset paths resolve correctly.
 
-### Plain static server on the repo (optional)
-
-If you use something like `npx serve` from the **repository root** (not `dist`), the `index.html` **import map** points `three` at `node_modules`, so you still need `npm install` and must serve files over HTTP. For day-to-day work, prefer `npm run dev`.
+The app uses `.vue` files and must be run through **Vite** (`npm run dev` / `npm run build`). Serving the repo root with a plain static server and opening `index.html` directly will not work.
 
 ## Project layout
 
 | Path | Purpose |
 |------|--------|
-| `index.html` | Page shell and Vite entry |
-| `src/main.js` | Scene, board, walls, robot, input, render loop |
-| `vite.config.js` | Vite configuration (`dist` output, source maps) |
+| `index.html` | Page shell (`#app` mount) and Vite entry |
+| `src/main.js` | Vue app bootstrap (`createApp`) |
+| `src/App.vue` | Lobby form (name + room) then mounts the game |
+| `src/components/GameBoard.vue` | Three.js scene, board, walls, robot, input, render loop |
+| `vite.config.js` | Vite + `@vitejs/plugin-vue` (`dist` output, source maps) |
+| `package.json` | Dependencies include Vue, Three.js, **`docker-names`** (default screen name) |
 
 ## License
 
