@@ -75,7 +75,7 @@ function runSimTick() {
     if (room.size === 0) continue;
     const snap = new Map();
     for (const [id, p] of room) {
-      snap.set(id, { x: p.x, z: p.z });
+      snap.set(id, { x: p.x, z: p.z, ry: p.ry });
     }
     for (const [id, p] of room) {
       stepPlayer(p, id, snap, SIM_DT);
