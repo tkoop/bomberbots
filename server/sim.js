@@ -1,6 +1,8 @@
 /** Keep in sync with `src/components/GameBoard.vue` movement math. */
 
-export const BOARD_INNER_HALF = 8;
+export const GRID_SIZE = 11;
+export const CELL_SIZE = 1.5;
+export const BOARD_INNER_HALF = (GRID_SIZE * CELL_SIZE) / 2;
 export const ROBOT_BODY_W = 0.75;
 export const ROBOT_BODY_D = 0.5;
 
@@ -12,6 +14,142 @@ const BOARD_SURFACE_EPS = 0.02;
 export const MOVE_SPEED = 6;
 
 export const ARROW_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+
+/**
+ * Get wall positions for the grid (walls at even grid intersections).
+ * @returns {{x: number, z: number}[]} Array of wall center positions
+ */
+export function getWallPositions() {
+  const walls = [];
+  const halfGrid = GRID_SIZE / 2;
+  for (let gx = 0; gx < GRID_SIZE; gx++) {
+    for (let gz = 0; gz < GRID_SIZE; gz++) {
+      // Walls at even grid intersections (classic bomberman pattern)
+      if (gx % 2 === 0 && gz % 2 === 0) {
+        const x = (gx - halfGrid + 0.5) * CELL_SIZE;
+        const z = (gz - halfGrid + 0.5) * CELL_SIZE;
+        walls.push({ x, z });
+      }
+    }
+  }
+  return walls;
+}
+
+/**
+ * Get valid spawn positions (corners of the grid).
+ * @returns {{x: number, z: number}[]} Array of spawn positions
+ */
+export function getValidSpawnPositions() {
+  const halfGrid = GRID_SIZE / 2;
+  // Spawn in corners (odd grid cells)
+  return [
+    { x: (1 - halfGrid + 0.5) * CELL_SIZE, z: (1 - halfGrid + 0.5) * CELL_SIZE },
+    { x: (GRID_SIZE - 2 - halfGrid + 0.5) * CELL_SIZE, z: (GRID_SIZE - 2 - halfGrid + 0.5) * CELL_SIZE },
+  ];
+}
+
+const WALL_HALF_SIZE = CELL_SIZE / 2;
+const WALL_EPS = 0.05;
+
+/**
+ * Check if a position collides with any wall.
+ * @param {number} x
+ * @param {number} z
+ * @param {number} ry
+ * @returns {boolean}
+ */
+export function collidesWallAt(x, z, ry) {
+  const { hx, hz } = hullHalfExtentsXZ(ry);
+  const walls = getWallPositions();
+  for (const wall of walls) {
+    // AABB collision between robot and wall
+    const robotMinX = x - hx - WALL_EPS;
+    const robotMaxX = x + hx + WALL_EPS;
+    const robotMinZ = z - hz - WALL_EPS;
+    const robotMaxZ = z + hz + WALL_EPS;
+
+    const wallMinX = wall.x - WALL_HALF_SIZE;
+    const wallMaxX = wall.x + WALL_HALF_SIZE;
+    const wallMinZ = wall.z - WALL_HALF_SIZE;
+    const wallMaxZ = wall.z + WALL_HALF_SIZE;
+
+    if (robotMaxX > wallMinX && robotMinX < wallMaxX && robotMaxZ > wallMinZ && robotMinZ < wallMaxZ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get minimum translation vector to push robot out of wall.
+ * @param {number} x
+ * @param {number} z
+ * @param {number} ry
+ * @returns {{depth: number, nx: number, nz: number} | null}
+ */
+export function getWallMTV(x, z, ry) {
+  const { hx, hz } = hullHalfExtentsXZ(ry);
+  const walls = getWallPositions();
+  let bestDepth = Infinity;
+  let bestNx = 0;
+  let bestNz = 0;
+
+  for (const wall of walls) {
+    const robotMinX = x - hx - WALL_EPS;
+    const robotMaxX = x + hx + WALL_EPS;
+    const robotMinZ = z - hz - WALL_EPS;
+    const robotMaxZ = z + hz + WALL_EPS;
+
+    const wallMinX = wall.x - WALL_HALF_SIZE;
+    const wallMaxX = wall.x + WALL_HALF_SIZE;
+    const wallMinZ = wall.z - WALL_HALF_SIZE;
+    const wallMaxZ = wall.z + WALL_HALF_SIZE;
+
+    // Check overlap
+    const overlapX = Math.min(robotMaxX, wallMaxX) - Math.max(robotMinX, wallMinX);
+    const overlapZ = Math.min(robotMaxZ, wallMaxZ) - Math.max(robotMinZ, wallMinZ);
+
+    if (overlapX <= 0 || overlapZ <= 0) continue;
+
+    // Find minimum push direction
+    const overlap = Math.min(overlapX, overlapZ);
+    if (overlap < bestDepth) {
+      bestDepth = overlap;
+      if (overlapX < overlapZ) {
+        // Push along X axis
+        const centerX = (robotMinX + robotMaxX) / 2;
+        const wallCenterX = (wallMinX + wallMaxX) / 2;
+        bestNx = centerX < wallCenterX ? -1 : 1;
+        bestNz = 0;
+      } else {
+        // Push along Z axis
+        const centerZ = (robotMinZ + robotMaxZ) / 2;
+        const wallCenterZ = (wallMinZ + wallMaxZ) / 2;
+        bestNx = 0;
+        bestNz = centerZ < wallCenterZ ? -1 : 1;
+      }
+    }
+  }
+
+  return bestDepth < Infinity ? { depth: bestDepth, nx: bestNx, nz: bestNz } : null;
+}
+
+/**
+ * Push robot out of walls if it's colliding.
+ * @param {{ x: number, z: number, ry: number }} p
+ */
+export function resolveWallCollision(p) {
+  const iterations = 4;
+  for (let i = 0; i < iterations; i++) {
+    const mtv = getWallMTV(p.x, p.z, p.ry);
+    if (!mtv) break;
+    const { depth, nx, nz } = mtv;
+    if (depth <= COLLIDE_EPS) break;
+    p.x += nx * depth;
+    p.z += nz * depth;
+    clampPlayerToBoard(p, p.ry);
+  }
+}
 
 /**
  * Max |Δx| / |Δz| from body center with feet at origin (`rotation.y`, Three.js/Y-up).
@@ -252,20 +390,66 @@ export function stepPlayer(p, id, snap, dt) {
     return;
   }
 
-  if (!collidesOthersAt(tx, tz, bodyRyForTick, id, snap)) {
+  if (!collidesOthersAt(tx, tz, bodyRyForTick, id, snap) && !collidesWallAt(tx, tz, bodyRyForTick)) {
     p.x = tx;
     p.z = tz;
   } else if (Math.abs(tx - ox) < 1e-12 && Math.abs(tz - oz) < 1e-12) {
     p.x = ox;
     p.z = oz;
   } else {
+    // Check if we can slide along the wall
+    const wallMTV = getWallMTV(tx, tz, bodyRyForTick);
+    if (wallMTV && !collidesOthersAt(tx, tz, bodyRyForTick, id, snap)) {
+      // Wall collision detected, try sliding
+      const { nx, nz } = wallMTV;
+      const dx = tx - ox;
+      const dz = tz - oz;
+      
+      // Project movement onto wall surface (perpendicular to normal)
+      // If normal is along X, slide along Z; if normal is along Z, slide along X
+      let slideX = 0;
+      let slideZ = 0;
+      
+      if (Math.abs(nx) > 0.5) {
+        // Normal is along X axis, slide along Z
+        slideZ = dz;
+      } else if (Math.abs(nz) > 0.5) {
+        // Normal is along Z axis, slide along X
+        slideX = dx;
+      }
+      
+      // Apply slide at half speed
+      if (Math.abs(slideX) > 1e-6 || Math.abs(slideZ) > 1e-6) {
+        const slideStep = MOVE_SPEED * dt * 0.5;
+        const slideLen = Math.hypot(slideX, slideZ);
+        if (slideLen > 1e-6) {
+          slideX = (slideX / slideLen) * slideStep;
+          slideZ = (slideZ / slideLen) * slideStep;
+          
+          const slideTx = ox + slideX;
+          const slideTz = oz + slideZ;
+          
+          // Check if slide position is valid
+          if (!collidesWallAt(slideTx, slideTz, bodyRyForTick) && !collidesOthersAt(slideTx, slideTz, bodyRyForTick, id, snap)) {
+            p.x = slideTx;
+            p.z = slideTz;
+            clampPlayerToBoard(p, bodyRyForTick);
+            p.ry = Math.atan2(ix, iz);
+            resolveWallCollision(p);
+            return;
+          }
+        }
+      }
+    }
+    
+    // Fall back to binary search for direct collision
     let lo = 0;
     let hi = 1;
     for (let k = 0; k < 16; k += 1) {
       const mid = (lo + hi) * 0.5;
       const mx = ox + (tx - ox) * mid;
       const mz = oz + (tz - oz) * mid;
-      if (collidesOthersAt(mx, mz, bodyRyForTick, id, snap)) {
+      if (collidesOthersAt(mx, mz, bodyRyForTick, id, snap) || collidesWallAt(mx, mz, bodyRyForTick)) {
         hi = mid;
       } else {
         lo = mid;
@@ -277,4 +461,7 @@ export function stepPlayer(p, id, snap, dt) {
   }
 
   p.ry = Math.atan2(ix, iz);
+
+  // Resolve wall collision after rotation
+  resolveWallCollision(p);
 }

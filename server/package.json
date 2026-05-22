@@ -6,7 +6,8 @@
   "type": "module",
   "description": "Bomber Bots — Socket.IO game server",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "stop": "node stop-server.js"
   },
   "dependencies": {
     "socket.io": "^4.8.1"

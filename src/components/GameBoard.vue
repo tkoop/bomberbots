@@ -24,8 +24,10 @@ const props = defineProps({
 
 const containerEl = ref(null);
 
-const FLOOR_SIZE = 40;
-const BOARD_INNER_HALF = 8;
+const GRID_SIZE = 11;
+const CELL_SIZE = 1.5;
+const FLOOR_SIZE = GRID_SIZE * CELL_SIZE;
+const BOARD_INNER_HALF = (GRID_SIZE * CELL_SIZE) / 2;
 
 const ROBOT_BODY_W = 0.75;
 const ROBOT_BODY_H = 1.1;
@@ -34,7 +36,7 @@ const ROBOT_HEAD_S = 0.42;
 
 const ROBOT_HEIGHT = ROBOT_BODY_H + ROBOT_HEAD_S;
 const WALL_HEIGHT = ROBOT_HEIGHT;
-const WALL_THICKNESS = ROBOT_BODY_D;
+const WALL_THICKNESS = CELL_SIZE;
 
 /** Y position for name label anchor (bottom of sprite, above head). */
 const NAME_LABEL_ANCHOR_Y = ROBOT_BODY_H + ROBOT_HEAD_S + 0.04;
@@ -132,6 +134,10 @@ let socket = null;
 let selfId = null;
 /** @type {Map<string, THREE.Group>} */
 const remoteMeshes = new Map();
+/** @type {{x: number, z: number}[]} */
+let wallPositions = [];
+/** @type {THREE.Group | null} */
+let wallGroup = null;
 
 function colorFromId(id) {
   let h = 0;
@@ -214,9 +220,11 @@ function connectSocket() {
     );
   });
 
-  socket.on('welcome', ({ selfId: sid, players }) => {
+  socket.on('welcome', ({ selfId: sid, players, walls }) => {
     selfId = sid;
+    wallPositions = walls || [];
     if (!scene) return;
+    createWalls();
     for (const p of players) {
       if (p.id === selfId || remoteMeshes.has(p.id)) continue;
       const mesh = createRemoteRobot(p);
@@ -314,6 +322,44 @@ function onResize() {
   renderer.setSize(w, h);
 }
 
+function createWalls() {
+  if (!scene) return;
+  
+  // Remove existing walls if they exist
+  if (wallGroup) {
+    scene.remove(wallGroup);
+    wallGroup.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry?.dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose());
+        } else {
+          obj.material?.dispose();
+        }
+      }
+    });
+    wallGroup = null;
+  }
+
+  if (wallPositions.length === 0) return;
+
+  const wallMaterial = new THREE.MeshStandardMaterial({
+    color: 0x5c4d3d,
+    roughness: 0.92,
+    metalness: 0.04,
+  });
+  wallGroup = new THREE.Group();
+  for (const wall of wallPositions) {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS),
+      wallMaterial
+    );
+    mesh.position.set(wall.x, WALL_HEIGHT / 2, wall.z);
+    wallGroup.add(mesh);
+  }
+  scene.add(wallGroup);
+}
+
 function tick() {
   renderer.render(scene, camera);
   rafId = requestAnimationFrame(tick);
@@ -330,7 +376,7 @@ onMounted(() => {
   const h = container.clientHeight;
 
   camera = new THREE.PerspectiveCamera(55, w / h || 1, 0.1, 200);
-  camera.position.set(0, 10, 14);
+  camera.position.set(0, 12, 12);
   camera.lookAt(0, 0, 0);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -350,29 +396,6 @@ onMounted(() => {
   );
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
-
-  const wallMaterial = new THREE.MeshStandardMaterial({
-    color: 0x5c4d3d,
-    roughness: 0.92,
-    metalness: 0.04,
-  });
-  const wallSpan = 2 * BOARD_INNER_HALF + 2 * WALL_THICKNESS;
-  const wallY = WALL_HEIGHT / 2;
-  const walls = new THREE.Group();
-
-  function addWall(ww, hh, dd, x, y, z) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(ww, hh, dd), wallMaterial);
-    mesh.position.set(x, y, z);
-    walls.add(mesh);
-  }
-
-  const wallZ = BOARD_INNER_HALF + WALL_THICKNESS / 2;
-  addWall(wallSpan, WALL_HEIGHT, WALL_THICKNESS, 0, wallY, wallZ);
-  addWall(wallSpan, WALL_HEIGHT, WALL_THICKNESS, 0, wallY, -wallZ);
-  const wallX = BOARD_INNER_HALF + WALL_THICKNESS / 2;
-  addWall(WALL_THICKNESS, WALL_HEIGHT, wallSpan, wallX, wallY, 0);
-  addWall(WALL_THICKNESS, WALL_HEIGHT, wallSpan, -wallX, wallY, 0);
-  scene.add(walls);
 
   robot = new THREE.Group();
 
@@ -427,6 +450,20 @@ onBeforeUnmount(() => {
 
   if (robot) {
     disposeNameLabel(robot);
+  }
+
+  if (wallGroup) {
+    wallGroup.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry?.dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose());
+        } else {
+          obj.material?.dispose();
+        }
+      }
+    });
+    wallGroup = null;
   }
 
   if (renderer) {

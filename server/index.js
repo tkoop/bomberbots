@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
-import { createKeyState, stepPlayer, ARROW_KEYS, resolveCollisionsInRoom } from './sim.js';
+import { createKeyState, stepPlayer, ARROW_KEYS, resolveCollisionsInRoom, getWallPositions, getValidSpawnPositions } from './sim.js';
 
 const PORT = Number(process.env.PORT) || 3001;
 const TICK_HZ = 30;
@@ -49,6 +49,9 @@ function sanitizePlayerName(raw) {
 }
 
 const DEFAULT_SKIN = '#6a7a8a';
+
+const WALLS = getWallPositions();
+const SPAWN_POSITIONS = getValidSpawnPositions();
 
 function sanitizeSkinColor(raw) {
   if (typeof raw !== 'string') return DEFAULT_SKIN;
@@ -138,11 +141,15 @@ io.on('connection', (socket) => {
       others.push({ id, name: p.name, skinColor: p.skinColor, x: p.x, z: p.z, ry: p.ry });
     }
 
+    // Assign spawn position (cycle through available corners)
+    const spawnIndex = room.size % SPAWN_POSITIONS.length;
+    const spawn = SPAWN_POSITIONS[spawnIndex];
+
     room.set(socket.id, {
       name: playerName,
       skinColor,
-      x: 0,
-      z: 0,
+      x: spawn.x,
+      z: spawn.z,
       ry: 0,
       keys: createKeyState(),
     });
@@ -156,7 +163,7 @@ io.on('connection', (socket) => {
       `roomSize=${room.size}`
     );
 
-    socket.emit('welcome', { selfId: socket.id, players: others });
+    socket.emit('welcome', { selfId: socket.id, players: others, walls: WALLS });
     log('emit →', socket.id, 'welcome', { players: others.length });
 
     if (typeof ack === 'function') {
