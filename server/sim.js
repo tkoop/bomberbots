@@ -50,23 +50,32 @@ export function getValidSpawnPositions() {
 
 const WALL_HALF_SIZE = CELL_SIZE / 2;
 const WALL_EPS = 0.05;
+const CORNER_NUDGE = 0.1;
 
 /**
  * Check if a position collides with any wall.
  * @param {number} x
  * @param {number} z
  * @param {number} ry
+ * @param {number} extraEps - Additional epsilon for corner rounding
+ * @param {{x: number, z: number} | null} excludeWall - Wall to exclude from collision check
  * @returns {boolean}
  */
-export function collidesWallAt(x, z, ry) {
+export function collidesWallAt(x, z, ry, extraEps = 0, excludeWall = null) {
   const { hx, hz } = hullHalfExtentsXZ(ry);
   const walls = getWallPositions();
+  const eps = WALL_EPS + extraEps;
   for (const wall of walls) {
+    // Skip excluded wall
+    if (excludeWall && wall.x === excludeWall.x && wall.z === excludeWall.z) {
+      continue;
+    }
+    
     // AABB collision between robot and wall
-    const robotMinX = x - hx - WALL_EPS;
-    const robotMaxX = x + hx + WALL_EPS;
-    const robotMinZ = z - hz - WALL_EPS;
-    const robotMaxZ = z + hz + WALL_EPS;
+    const robotMinX = x - hx - eps;
+    const robotMaxX = x + hx + eps;
+    const robotMinZ = z - hz - eps;
+    const robotMaxZ = z + hz + eps;
 
     const wallMinX = wall.x - WALL_HALF_SIZE;
     const wallMaxX = wall.x + WALL_HALF_SIZE;
@@ -397,28 +406,37 @@ export function stepPlayer(p, id, snap, dt) {
     p.x = ox;
     p.z = oz;
   } else {
-    // Check if we can slide along the wall
+    // When wall collision is detected, try moving in original direction ignoring walls
+    // This allows rounding corners by being permissive about wall collision
+    const cornerStep = MOVE_SPEED * dt;
+    const cornerTx = ox + ix * cornerStep;
+    const cornerTz = oz + iz * cornerStep;
+    
+    if (!collidesOthersAt(cornerTx, cornerTz, bodyRyForTick, id, snap)) {
+      p.x = cornerTx;
+      p.z = cornerTz;
+      clampPlayerToBoard(p, bodyRyForTick);
+      p.ry = Math.atan2(ix, iz);
+      resolveWallCollision(p);
+      return;
+    }
+    
+    // If that fails, try sliding along the wall
     const wallMTV = getWallMTV(tx, tz, bodyRyForTick);
     if (wallMTV && !collidesOthersAt(tx, tz, bodyRyForTick, id, snap)) {
-      // Wall collision detected, try sliding
       const { nx, nz } = wallMTV;
       const dx = tx - ox;
       const dz = tz - oz;
       
-      // Project movement onto wall surface (perpendicular to normal)
-      // If normal is along X, slide along Z; if normal is along Z, slide along X
       let slideX = 0;
       let slideZ = 0;
       
       if (Math.abs(nx) > 0.5) {
-        // Normal is along X axis, slide along Z
         slideZ = dz;
       } else if (Math.abs(nz) > 0.5) {
-        // Normal is along Z axis, slide along X
         slideX = dx;
       }
       
-      // Apply slide at half speed
       if (Math.abs(slideX) > 1e-6 || Math.abs(slideZ) > 1e-6) {
         const slideStep = MOVE_SPEED * dt * 0.5;
         const slideLen = Math.hypot(slideX, slideZ);
@@ -429,7 +447,6 @@ export function stepPlayer(p, id, snap, dt) {
           const slideTx = ox + slideX;
           const slideTz = oz + slideZ;
           
-          // Check if slide position is valid
           if (!collidesWallAt(slideTx, slideTz, bodyRyForTick) && !collidesOthersAt(slideTx, slideTz, bodyRyForTick, id, snap)) {
             p.x = slideTx;
             p.z = slideTz;
